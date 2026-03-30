@@ -23,6 +23,14 @@ if st.button("Show recommend"):
     col1, col2, col3, col4, col5 = st.columns(5)
     with col1:
         st.text(movie_name[0])
+    with col2:
+        st.text(movie_name[1])
+    with col3:
+        st.text(movie_name[2])
+    with col4:
+        st.text(movie_name[3])
+    with col5:
+        st.text(movie_name[4])
         
 
 
