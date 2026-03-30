@@ -7,7 +7,7 @@ movies_list = movies['title'].values
 
 
 st.header("Movie Recomendation System")
-st.selectbox("select movie from dropdown", movies_list)
+st.selectbox("select movie from dropdown ", movies_list)
 
 def recommand(movies):
     index = movies[movies['title']== movies].index[0]
@@ -19,6 +19,10 @@ def recommand(movies):
 
 
 if st.button("Show recommend"):
-    recommend(selectvalue)
+    movie_name = recommend(selectvalue)
+    col1, col2, col3, col4, col5 = st.columns(5)
+    with col1:
+        st.text(movie_name[0])
+        
 
 
