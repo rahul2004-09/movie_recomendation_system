@@ -6,7 +6,7 @@ similarity = pickle.load(open("similarity.pkl",'rb'))
 
 movies_list = movies['title'].values
 
-st.header("Movie Recommendation System")
+st.header("Movies Recommendation System")
 
 selected_movie = st.selectbox("Select movie from dropdown", movies_list)
 
