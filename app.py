@@ -1,79 +1,83 @@
+from pathlib import Path
+
 import streamlit as st
-import pickle
-import requests
 
-# ---------------- FETCH POSTER ---------------- #
-def fetch_poster(movie_id):
-    try:
-        url = f"https://api.themoviedb.org/3/movie/{movie_id}?api_key=c7ec19ffdd3279641fb606d19ceb9bb1&language=en-US"
-        data = requests.get(url).json()
+from src.hybrid import HybridRecommender
+from src.tmdb_api import get_poster_url
 
-        poster_path = data.get('poster_path')
+ARTIFACTS_DIR = Path(__file__).resolve().parent / "artifacts"
+REQUIRED_ARTIFACTS = [
+    "movies_content.parquet", "content_index.parquet", "content_sim.npy",
+    "bridge.parquet", "collab_neighbors.parquet",
+]
 
-        if poster_path:
-            return "https://image.tmdb.org/t/p/w500/" + poster_path
-        else:
-            return "https://via.placeholder.com/500x750?text=No+Image"
-    except:
-        return "https://via.placeholder.com/500x750?text=Error"
+st.set_page_config(page_title="Movie Recommender", page_icon="🎬", layout="wide")
 
 
-# ---------------- LOAD DATA ---------------- #
-movies = pickle.load(open("movie_list.pkl",'rb'))
-similarity = pickle.load(open("similarity.pkl",'rb'))
-
-movies_list = movies['title'].values
-
-st.header("🎬 Movie Recommendation System")
-
-# ---------------- SELECT MOVIE ---------------- #
-selected_movie = st.selectbox("Select movie from dropdown", movies_list)
+@st.cache_resource
+def load_recommender() -> HybridRecommender:
+    return HybridRecommender()
 
 
-# ---------------- RECOMMEND FUNCTION ---------------- #
-def recommend(movie):
-    index = movies[movies['title'] == movie].index[0]
+@st.cache_data(show_spinner=False)
+def cached_poster_url(tmdb_id: int, title: str) -> str:
+    return get_poster_url(tmdb_id, title)
 
-    distance = sorted(
-        list(enumerate(similarity[index])),
-        reverse=True,
-        key=lambda vector: vector[1]
+
+def artifacts_missing() -> list[str]:
+    return [f for f in REQUIRED_ARTIFACTS if not (ARTIFACTS_DIR / f).exists()]
+
+
+def main() -> None:
+    st.title("🎬 Hybrid Movie Recommender")
+    st.caption("Content-based (bag-of-entities) + Collaborative filtering (SVD), blended.")
+
+    missing = artifacts_missing()
+    if missing:
+        st.error(
+            "Missing precomputed artifacts: " + ", ".join(missing) +
+            "\n\nRun these first, from the project root:\n\n"
+            "```\npython -m src.data_pipeline\npython -m src.build_models\n```"
+        )
+        st.stop()
+
+    recommender = load_recommender()
+
+    col_left, col_right = st.columns([2, 1])
+    with col_left:
+        title = st.selectbox("Pick a movie you like", options=recommender.titles())
+    with col_right:
+        top_n = st.slider("How many recommendations", min_value=5, max_value=20, value=10)
+
+    alpha = st.slider(
+        "Content-based ↔ Collaborative-filtering blend",
+        min_value=0.0, max_value=1.0, value=0.5, step=0.05,
+        help="1.0 = pure content similarity (genres/plot/cast). 0.0 = pure collaborative "
+             "(what similar users also liked). 0.5 = even blend.",
     )
 
-    recommend_movie = []
-    recommend_poster = []
+    if not recommender.has_rating_data(title):
+        st.info(f"No MovieLens rating data for **{title}** — showing content-based results only.")
 
-    for i in distance[1:6]:  # skip itself
-        movie_id = movies.iloc[i[0]].id   # make sure column is 'id'
-        
-        recommend_movie.append(movies.iloc[i[0]].title)
-        recommend_poster.append(fetch_poster(movie_id))
+    if st.button("Recommend", type="primary"):
+        results, used_hybrid = recommender.recommend(title, alpha=alpha, top_n=top_n)
 
-    return recommend_movie, recommend_poster
+        if not results:
+            st.warning("No recommendations found for that title.")
+            return
+
+        if used_hybrid:
+            st.success(f"Blended recommendations (alpha={alpha:.2f}) for **{title}**")
+        else:
+            st.success(f"Content-based recommendations for **{title}**")
+
+        cols = st.columns(5)
+        for i, rec in enumerate(results):
+            with cols[i % 5]:
+                st.image(cached_poster_url(rec.tmdb_id, rec.title), use_container_width=True)
+                st.markdown(f"**{rec.title}**")
+                st.caption(f"score {rec.score:.2f}  ·  content {rec.content_score:.2f}  ·  collab {rec.collab_score:.2f}")
 
 
-# ---------------- BUTTON ---------------- #
-if st.button("Show Recommend"):
-    movie_names, movie_posters = recommend(selected_movie)
-
-    col1, col2, col3, col4, col5 = st.columns(5)
-
-    with col1:
-        st.text(movie_names[0])
-        st.image(movie_posters[0])
-
-    with col2:
-        st.text(movie_names[1])
-        st.image(movie_posters[1])
-
-    with col3:
-        st.text(movie_names[2])
-        st.image(movie_posters[2])
-
-    with col4:
-        st.text(movie_names[3])
-        st.image(movie_posters[3])
-
-    with col5:
-        st.text(movie_names[4])
-        st.image(movie_posters[4])
+if __name__ == "__main__":
+    main()

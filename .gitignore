@@ -1,3 +1,7 @@
-*.pkl
-dataset/
+.env
+artifacts/
+data/
 __pycache__/
+*.pyc
+.venv/
+venv/
